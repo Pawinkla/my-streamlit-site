@@ -1,0 +1,16 @@
+{
+  "feature_cols": [
+    "revenue_growth_ttm",
+    "gross_margin_ttm",
+    "operating_margin_ttm",
+    "net_margin_ttm",
+    "roe_ttm",
+    "roa_ttm",
+    "debt_to_equity",
+    "ocf_to_cl",
+    "interest_coverage",
+    "asset_turnover_ttm"
+  ],
+  "exchange_suffix": ".BK",
+  "forward_months": 6
+}

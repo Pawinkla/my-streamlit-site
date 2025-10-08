@@ -1,0 +1,18 @@
+# build tools ป้องกัน error distutils/wheel
+setuptools==69.5.1
+wheel==0.41.2
+
+# deps สำหรับรันแอป (รุ่นใหม่ ให้ตรงกับ pickle ที่มีฟิลด์ missing_go_to_left)
+streamlit==1.35.0
+yfinance==0.2.65
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.10.1
+scikit-learn==1.5.2
+joblib==1.4.2
+tqdm==4.66.4
+python-dateutil==2.9.0.post0
+
+torch
+torchvision
+pillow
