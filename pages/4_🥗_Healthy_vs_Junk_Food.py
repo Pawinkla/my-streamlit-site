@@ -23,8 +23,17 @@ def load_model_from_path(path: str, device: str):
     model.load_state_dict(ckpt["model"]); model.eval(); model.to(device)
     names = ckpt.get("class_names", ["Healthy","Unhealthy"]); return model, names
 
-tf = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor(),
-                         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225)])
+from torchvision import transforms
+
+tf = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],
+    ),
+])
+
 
 st.title("🥗 Healthy vs Junk Food 🍟")
 device = "cuda" if torch.cuda.is_available() else "cpu"
