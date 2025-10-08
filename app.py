@@ -8,8 +8,8 @@ with left:
     st.image("https://avatars.githubusercontent.com/u/1?v=4", width=160)  # เปลี่ยนเป็นรูปของคุณ
 with right:
     st.markdown("""
-**ชื่อ:ภวินท์ กล้าทำ** …  
-**สาขา/ชั้นปี:** …  
+**ชื่อ:ภวินท์ กล้าทำ**  
+**สาขา/ชั้นปี:4**   
 **ความสนใจ:** Data Science, Machine Learning, Streamlit  
 **ทักษะ:** Python, SQL, scikit-learn, PyTorch, Streamlit, Visualization
 """)
