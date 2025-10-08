@@ -1,26 +1,76 @@
+# pages/4_🥗_Healthy_vs_Junk_Food.py
 # -*- coding: utf-8 -*-
-# Healthy vs Junk Food — Simplified (no toggles, no class pickers)
+
 import os
-import streamlit as st
+import io
+from typing import List, Tuple
+
 import torch
-from torch import nn
+import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
-import numpy as np
+import streamlit as st
 
-st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗", layout="centered")
+
+# -----------------------------
+# ตั้งค่าเริ่มต้น
+# -----------------------------
+st.set_page_config(
+    page_title="Healthy vs Junk Food",
+    page_icon="🥗",
+    layout="centered",
+)
 
 MODEL_PATH = "model/best_model.pt"
-CLASS_NAMES_DEFAULT = ["Healthy", "Unhealthy"]
+CLASS_NAMES_DEFAULT = ["Healthy", "Unhealthy"]   # ให้ชื่อคลาสเรียงตามที่คุณเทรน
 
+
+# -----------------------------
+# ฟังก์ชันโหลดโมเดล (โหมดถึก)
+# รองรับหลายรูปแบบการ save:
+#   - torch.save(model)
+#   - torch.save(model.state_dict())
+#   - torch.save({'model': state_dict, 'class_names': ...})
+#   - เคส DataParallel ที่คีย์ขึ้นต้น "module."
+# -----------------------------
 @st.cache_resource
-def load_model(path: str, device: str = "cpu"):
+def load_model(path: str, device: str = "cpu") -> Tuple[nn.Module, List[str]]:
     if not os.path.exists(path):
-        raise FileNotFoundError(f"ไม่พบไฟล์โมเดลที่ '{path}'")
+        raise FileNotFoundError(f"ไม่พบไฟล์โมเดล: {path}")
 
     ckpt = torch.load(path, map_location=device)
 
-    # โมเดลโครง ResNet18 (หัว 2 คลาส)
+    # 1) ถ้า save มาเป็น "ตัวโมเดลทั้งตัว"
+    if isinstance(ckpt, nn.Module):
+        model = ckpt.to(device)
+        model.eval()
+        class_names = getattr(model, "class_names", CLASS_NAMES_DEFAULT)
+        class_names = list(map(str, class_names))
+        return model, class_names
+
+    # 2) ถ้าเป็น dict, หา state_dict ตามคีย์ยอดนิยม
+    state_dict = None
+    if isinstance(ckpt, dict):
+        for k in ["model", "state_dict", "model_state_dict"]:
+            if k in ckpt and isinstance(ckpt[k], dict):
+                state_dict = ckpt[k]
+                break
+        if state_dict is None and all(isinstance(v, torch.Tensor) for v in ckpt.values()):
+            # น่าจะเป็น state_dict ตรง ๆ
+            state_dict = ckpt
+    if state_dict is None:
+        raise RuntimeError(
+            "ไฟล์โมเดลไม่อยู่ในรูปแบบที่รู้จัก (nn.Module หรือ state_dict หรือ {'model': ...})"
+        )
+
+    # 3) ถ้าคีย์เป็น DataParallel (ขึ้นต้น 'module.')
+    if all(isinstance(k, str) and k.startswith("module.") for k in state_dict.keys()):
+        new_sd = {}
+        for k, v in state_dict.items():
+            new_sd[k.replace("module.", "", 1)] = v
+        state_dict = new_sd
+
+    # 4) ประกอบสถาปัตย์ให้ตรงกับที่เทรน: ResNet18 + head 2 คลาส
     model = models.resnet18(weights=None)
     model.fc = nn.Sequential(
         nn.Linear(model.fc.in_features, 128),
@@ -29,96 +79,105 @@ def load_model(path: str, device: str = "cpu"):
         nn.Linear(128, 2),
     )
 
-    # รองรับทั้ง ckpt เป็น state_dict ตรง ๆ หรือ dict ที่มีคีย์ "model"
-    state_dict = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
-    model.load_state_dict(state_dict, strict=True)
-    model.eval().to(device)
+    # ตั้ง strict=False เพื่อยืดหยุ่น (ป้องกันบัฟเฟอร์คีย์ไม่ตรงบางตัว)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
 
-    # ถ้ามี class_names ใน ckpt ใช้เลย ไม่งั้น fallback
-    class_names = (
-        ckpt.get("class_names", CLASS_NAMES_DEFAULT)
-        if isinstance(ckpt, dict) else CLASS_NAMES_DEFAULT
-    )
-    # ปรับให้เป็น list[str]
-    class_names = list(map(str, class_names))
+    if missing:
+        st.warning(
+            f"weights บางส่วนไม่พบในโมเดล: {missing[:8]}{' ...' if len(missing) > 8 else ''}"
+        )
+    if unexpected:
+        st.warning(
+            f"พบคีย์ส่วนเกินในไฟล์ weights: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}"
+        )
+
+    model.to(device).eval()
+
+    # 5) class_names หากบันทึกไว้ใน checkpoint
+    class_names = CLASS_NAMES_DEFAULT
+    if isinstance(ckpt, dict) and "class_names" in ckpt:
+        try:
+            class_names = list(map(str, ckpt["class_names"]))
+        except Exception:
+            pass
+
     return model, class_names
 
-# Transform ให้ตรงกับตอนเทรน (ImageNet mean/std)
-TFM = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
 
-def predict(model, img: Image.Image, device: str = "cpu") -> np.ndarray:
-    x = TFM(img.convert("RGB")).unsqueeze(0)
-    if device == "cuda":
-        x = x.to(device)
+# -----------------------------
+# Transform สำหรับภาพ
+# -----------------------------
+def build_transform(img_size: int = 224):
+    return transforms.Compose(
+        [
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225),
+            ),
+        ]
+    )
+
+
+# -----------------------------
+# ฟังก์ชันพยากรณ์
+# -----------------------------
+def predict_image(
+    model: nn.Module,
+    image: Image.Image,
+    device: str,
+) -> torch.Tensor:
+    tfm = build_transform(224)
     with torch.no_grad():
-        prob = torch.softmax(model(x), dim=1)[0].detach().cpu().numpy()
-    return prob  # shape (2,)
+        x = tfm(image.convert("RGB")).unsqueeze(0).to(device)
+        logits = model(x)
+        probs = logits.softmax(dim=1).squeeze(0).cpu()
+    return probs
 
-# ---------------- UI ----------------
-st.markdown("## 🥗 Healthy vs Junk Food")
-st.caption("โหลดโมเดลอัตโนมัติจาก `model/best_model.pt` แล้วอัปโหลดภาพเพื่อทำนายได้ทันที")
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# -----------------------------
+# UI
+# -----------------------------
+st.title("Healthy vs Junk Food  🥗")
+
+# โหลดโมเดล
+device = "cpu"  # Streamlit Cloud มักจะเป็น CPU
 try:
-    model, class_names = load_model(MODEL_PATH, device)
-    st.success(f"โหลดโมเดลสำเร็จ ✅ (อุปกรณ์: {device.upper()})")
-    st.caption(f"ลำดับคลาสจากโมเดล → index 0: **{class_names[0]}**, index 1: **{class_names[1]}**")
+    model, class_names = load_model(MODEL_PATH, device=device)
+    st.success(f"โหลดโมเดลสำเร็จจาก `{MODEL_PATH}` (อุปกรณ์: {device.upper()})")
 except Exception as e:
     st.error(f"โหลดโมเดลไม่สำเร็จ: {e}")
     st.stop()
 
-# อัปโหลดรูปเพื่อทำนาย
-img_file = st.file_uploader("อัปโหลดรูปอาหาร (JPG/PNG)", type=["jpg", "jpeg", "png"])
-if not img_file:
-    st.info("ลาก–วาง หรือกดเลือกไฟล์ เพื่อทำนายสุขภาพของอาหารจากรูปภาพ 📸")
-    st.stop()
+# ตัวเลือกอัปโหลดภาพ
+st.markdown("### อัปโหลดรูปอาหาร (JPG/PNG)")
+file = st.file_uploader(
+    "Drag & drop หรือกดปุ่มเพื่อเลือกไฟล์",
+    type=["jpg", "jpeg", "png"],
+)
 
-img = Image.open(img_file).convert("RGB")
-st.image(img, caption="ภาพที่อัปโหลด", use_column_width=True)
+if file is not None:
+    # แสดงภาพ
+    image = Image.open(io.BytesIO(file.read()))
+    st.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
 
-# --- ค่าดิบจากโมเดล ---
-prob_raw = predict(model, img, device)     # [p0, p1]
-names_raw = class_names[:]                 # ตามเช็คพอยต์เดิม
+    # พยากรณ์
+    probs = predict_image(model, image, device)
+    pred_idx = int(probs.argmax().item())
+    pred_name = class_names[pred_idx] if pred_idx < len(class_names) else f"class_{pred_idx}"
+    confidence = float(probs[pred_idx].item())
 
-# --- จัดระเบียบชื่อคลาส/ความน่าจะเป็นแบบอัตโนมัติ ---
-names = names_raw[:]
-prob = prob_raw.copy()
+    st.markdown("### ผลลัพธ์")
+    st.subheader(f"คำตอบ: **{pred_name}**")
+    st.caption(f"ความมั่นใจ: {confidence:.2%}")
 
-# ถ้าเช็คพอยต์มีชื่อ 'Healthy' และ 'Unhealthy' ให้จัดลำดับให้ Healthy อยู่ซ้ายเสมอ
-if set(["Healthy", "Unhealthy"]).issubset(set(n.lower().capitalize() for n in names_raw)):
-    # ทำให้ชื่อมีฟอร์แมตตรงกันก่อน
-    names_norm = [n.lower().capitalize() for n in names_raw]
-    healthy_idx = names_norm.index("Healthy")
-    unhealthy_idx = names_norm.index("Unhealthy")
-    order = [healthy_idx, unhealthy_idx]
-    names = [names_raw[i] for i in order]
-    prob = prob_raw[order]
-# ไม่งั้น ให้คงลำดับจากโมเดลตามเดิม
-
-# -------- แสดงผล --------
-top = int(prob.argmax())
-label = names[top]
-conf = float(prob[top])
-
-st.markdown("---")
-st.markdown(f"### ผลลัพธ์: **{label}**")
-st.caption(f"ความมั่นใจ: **{conf:.2f}**")
-
-c1, c2 = st.columns(2)
-with c1:
-    st.metric(names[0], f"{prob[0]:.2f}")
-    st.progress(min(max(float(prob[0]), 0.0), 1.0))
-with c2:
-    st.metric(names[1], f"{prob[1]:.2f}")
-    st.progress(min(max(float(prob[1]), 0.0), 1.0))
-
-with st.expander("รายละเอียด/ค่าดิบเพื่อการตรวจสอบ"):
-    st.write("class_names (ดิบจากโมเดล):", names_raw)
-    st.write("prob (ดิบจากโมเดล):", {names_raw[i]: float(prob_raw[i]) for i in range(len(prob_raw))})
-    st.write("class_names (หลังจัดลำดับ):", names)
-    st.write("prob (หลังจัดลำดับ):", {names[i]: float(prob[i]) for i in range(len(prob))})
+    # แสดง bars ของทุกคลาส
+    st.markdown("---")
+    st.markdown("**Probability ของแต่ละคลาส**")
+    for i, p in enumerate(probs.tolist()):
+        name = class_names[i] if i < len(class_names) else f"class_{i}"
+        st.write(f"{name}: {p:.2%}")
+        st.progress(min(max(p, 0.0), 1.0))
+else:
+    st.info("อัปโหลดรูปภาพเพื่อให้โมเดลพยากรณ์")
