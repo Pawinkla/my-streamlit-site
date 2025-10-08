@@ -1,64 +1,127 @@
-
 # -*- coding: utf-8 -*-
-import io, os
-import streamlit as st, torch
-from PIL import Image
-from torchvision import transforms, models
+# Healthy vs Junk Food — Flip + Choose Healthy label robustly
+import os
+import streamlit as st
+import torch
 from torch import nn
-st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗")
+from torchvision import models, transforms
+from PIL import Image
+
+st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗", layout="centered")
+
+MODEL_PATH = "model/best_model.pt"
+CLASS_NAMES_DEFAULT = ["Healthy", "Unhealthy"]
 
 @st.cache_resource
-def load_model_from_bytes(ckpt_bytes: bytes, device: str):
-    buf = io.BytesIO(ckpt_bytes); ckpt = torch.load(buf, map_location=device)
-    model = models.resnet18(weights=None)
-    model.fc = nn.Sequential(nn.Linear(model.fc.in_features, 128), nn.ReLU(), nn.Dropout(0.2), nn.Linear(128, 2))
-    model.load_state_dict(ckpt["model"]); model.eval(); model.to(device)
-    names = ckpt.get("class_names", ["Healthy","Unhealthy"]); return model, names
+def load_model(path: str, device: str = "cpu"):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"ไม่พบไฟล์โมเดลที่ '{path}'")
 
-@st.cache_resource
-def load_model_from_path(path: str, device: str):
     ckpt = torch.load(path, map_location=device)
+
     model = models.resnet18(weights=None)
-    model.fc = nn.Sequential(nn.Linear(model.fc.in_features, 128), nn.ReLU(), nn.Dropout(0.2), nn.Linear(128, 2))
-    model.load_state_dict(ckpt["model"]); model.eval(); model.to(device)
-    names = ckpt.get("class_names", ["Healthy","Unhealthy"]); return model, names
+    model.fc = nn.Sequential(
+        nn.Linear(model.fc.in_features, 128),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(128, 2),
+    )
 
-from torchvision import transforms
+    state_dict = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
+    model.load_state_dict(state_dict)
+    model.eval().to(device)
 
-tf = transforms.Compose([
+    class_names = ckpt.get("class_names", CLASS_NAMES_DEFAULT) if isinstance(ckpt, dict) else CLASS_NAMES_DEFAULT
+    return model, class_names
+
+TFM = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    ),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
 ])
 
+def predict(model, img: Image.Image, device: str = "cpu"):
+    x = TFM(img.convert("RGB")).unsqueeze(0)
+    if device == "cuda":
+        x = x.to(device)
+    with torch.no_grad():
+        prob = torch.softmax(model(x), dim=1)[0].detach().cpu().numpy()
+    return prob  # [p0, p1]
 
-st.title("🥗 Healthy vs Junk Food 🍟")
+# ---------------- UI ----------------
+st.markdown("## 🥗 Healthy vs Junk Food")
+st.caption("โหลดโมเดลอัตโนมัติจาก `model/best_model.pt` แล้วอัปโหลดภาพเพื่อทำนายได้ทันที")
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
+try:
+    model, class_names = load_model(MODEL_PATH, device)
+    st.success(f"โหลดโมเดลสำเร็จ ✅ (อุปกรณ์: {device.upper()})")
+    st.caption(f"ลำดับคลาสจากโมเดล → index 0: **{class_names[0]}**, index 1: **{class_names[1]}**")
+except Exception as e:
+    st.error(f"โหลดโมเดลไม่สำเร็จ: {e}")
+    st.stop()
 
-opt = st.radio("เลือกวิธีโหลดโมเดล", ["อัปโหลดไฟล์ .pt", "พาธไฟล์ในเครื่องเซิร์ฟเวอร์"], horizontal=True)
-model=None; names=["Healthy","Unhealthy"]
+# 1) Toggle กลับด้านคลาส (สลับ index ทั้งชุด)
+flip = st.toggle("กลับด้านคลาส (Flip classes)", value=False,
+                 help="ถ้าผลเหมือนสลับ Healthy/Unhealthy ให้เปิดสวิตช์นี้")
 
-if opt=="อัปโหลดไฟล์ .pt":
-    up=st.file_uploader("อัปโหลดโมเดล (.pt)", type=["pt"])
-    if up: model,names=load_model_from_bytes(up.read(),device); st.success("โหลดโมเดลแล้ว ✅")
+# 2) เลือกด้วย “ชื่อคลาสจริง” ว่าอันไหนคือ Healthy (กันพลาด 100%)
+healthy_label_pick = st.radio(
+    "กำหนดว่า **คำไหน** คือ Healthy (ควบคุมเองแบบชัวร์สุด)",
+    options=class_names,   # ให้เลือกจากชื่อในโมเดลเลย
+    index=0,
+    horizontal=True,
+)
+
+img_file = st.file_uploader("อัปโหลดรูปอาหาร (JPG/PNG)", type=["jpg", "jpeg", "png"])
+if img_file:
+    img = Image.open(img_file).convert("RGB")
+    st.image(img, caption="ภาพที่อัปโหลด", use_column_width=True)
+
+    # --- ค่าดิบจากโมเดล ---
+    prob_raw = predict(model, img, device)  # [p0, p1]
+    names_raw = class_names[:]              # ['Healthy','Unhealthy'] หรืออย่างอื่น
+
+    # ทำให้ deterministic: เริ่มจากค่าดิบทุกครั้ง
+    names = names_raw[:]
+    prob = prob_raw.copy()
+
+    # ขั้นที่ 1: flip ถ้าผู้ใช้สั่ง
+    if flip:
+        prob = prob[::-1]
+        names = names[::-1]
+
+    # ขั้นที่ 2: บังคับให้ "Healthy label" ไปอยู่ที่ index 0 เสมอ
+    # ถ้าสิ่งที่ผู้ใช้เลือก (healthy_label_pick) อยู่ที่ index 1 ตอนนี้ → พลิก
+    if healthy_label_pick == names[1]:
+        prob = prob[::-1]
+        names = names[::-1]
+    # ถ้า healthy_label_pick == names[0] ก็ไม่ต้องทำอะไร
+
+    # -------- แสดงผล --------
+    top = int(prob.argmax())
+    label = names[top]
+    conf = float(prob[top])
+
+    st.markdown("---")
+    st.markdown(f"### ผลลัพธ์: **{label}**")
+    st.caption(f"ความมั่นใจ: **{conf:.2f}**")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric(names[0], f"{prob[0]:.2f}")
+        st.progress(min(max(float(prob[0]), 0.0), 1.0))
+    with c2:
+        st.metric(names[1], f"{prob[1]:.2f}")
+        st.progress(min(max(float(prob[1]), 0.0), 1.0))
+
+    with st.expander("รายละเอียด/ค่าดิบเพื่อการตรวจสอบ"):
+        st.write("class_names (ดิบจากโมเดล):", names_raw)
+        st.write("prob (ดิบจากโมเดล):", {names_raw[i]: float(p) for i, p in enumerate(prob_raw)})
+        st.write("Healthy (ที่เลือก):", healthy_label_pick)
+        st.write("class_names (หลังปรับ):", names)
+        st.write("prob (หลังปรับ):", {names[i]: float(p) for i, p in enumerate(prob)})
+
 else:
-    path=st.text_input("พาธไฟล์โมเดล (.pt)", value="outputs/best_model.pt")
-    if path and os.path.exists(path): model,names=load_model_from_path(path,device); st.success(f"โหลดโมเดลจาก `{path}` แล้ว ✅")
-    else: st.info("ระบุพาธในเครื่อง (ตอนรัน local) หรือเลือก 'อัปโหลดไฟล์ .pt'")
-
-st.divider()
-img=st.file_uploader("อัปโหลดรูปอาหาร", type=["jpg","jpeg","png"])
-thr=st.slider("เกณฑ์ความมั่นใจขั้นต่ำ (Unsure ถ้าต่ำกว่า)", 0.5, 0.95, 0.60, 0.01)
-if img:
-    if model is None: st.error("กรุณาโหลดโมเดลก่อน")
-    else:
-        im=Image.open(img).convert("RGB"); st.image(im, caption="ภาพที่อัปโหลด", use_container_width=True)
-        x=tf(im).unsqueeze(0); 
-        if device=="cuda": x=x.to(device)
-        with torch.no_grad(): p=torch.softmax(model(x),dim=1)[0].detach().cpu().numpy()
-        conf=float(p.max()); label=names[int(p.argmax())]
-        st.subheader(f"ผลลัพธ์: **{'ไม่แน่ใจ' if conf<thr else label}**  (ความมั่นใจ {conf:.2f})")
-        st.write({"Healthy": float(p[0]), "Unhealthy": float(p[1])}); st.progress(conf)
+    st.info("ลาก–วาง หรือกดเลือกไฟล์ เพื่อทำนายสุขภาพของอาหารจากรูปภาพ 📸")
