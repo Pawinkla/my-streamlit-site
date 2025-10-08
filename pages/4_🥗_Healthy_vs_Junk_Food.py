@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Healthy vs Junk Food — Flip + Manual Mapping
+# Healthy vs Junk Food — Flip + Choose Healthy label robustly
 import os
 import streamlit as st
 import torch
@@ -9,11 +9,9 @@ from PIL import Image
 
 st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗", layout="centered")
 
-# ---------- Config ----------
 MODEL_PATH = "model/best_model.pt"
 CLASS_NAMES_DEFAULT = ["Healthy", "Unhealthy"]
 
-# ---------- Loaders ----------
 @st.cache_resource
 def load_model(path: str, device: str = "cpu"):
     if not os.path.exists(path):
@@ -51,7 +49,7 @@ def predict(model, img: Image.Image, device: str = "cpu"):
         prob = torch.softmax(model(x), dim=1)[0].detach().cpu().numpy()
     return prob  # [p0, p1]
 
-# ---------- UI ----------
+# ---------------- UI ----------------
 st.markdown("## 🥗 Healthy vs Junk Food")
 st.caption("โหลดโมเดลอัตโนมัติจาก `model/best_model.pt` แล้วอัปโหลดภาพเพื่อทำนายได้ทันที")
 
@@ -64,15 +62,15 @@ except Exception as e:
     st.error(f"โหลดโมเดลไม่สำเร็จ: {e}")
     st.stop()
 
-# 1) Toggle สลับลำดับ (เผื่อโมเดลบันทึกลำดับสลับมา)
+# 1) Toggle กลับด้านคลาส (สลับ index ทั้งชุด)
 flip = st.toggle("กลับด้านคลาส (Flip classes)", value=False,
                  help="ถ้าผลเหมือนสลับ Healthy/Unhealthy ให้เปิดสวิตช์นี้")
 
-# 2) กำหนด mapping เองแบบชัวร์ ๆ
-mapping_choice = st.radio(
-    "กำหนดว่า index ไหนคือ Healthy (ควบคุมเองแบบชัวร์สุด)",
-    options=["index 0 คือ Healthy", "index 1 คือ Healthy"],
-    index=0,  # ค่าเริ่มต้นตามโมเดล/ความคุ้นเคย
+# 2) เลือกด้วย “ชื่อคลาสจริง” ว่าอันไหนคือ Healthy (กันพลาด 100%)
+healthy_label_pick = st.radio(
+    "กำหนดว่า **คำไหน** คือ Healthy (ควบคุมเองแบบชัวร์สุด)",
+    options=class_names,   # ให้เลือกจากชื่อในโมเดลเลย
+    index=0,
     horizontal=True,
 )
 
@@ -81,30 +79,27 @@ if img_file:
     img = Image.open(img_file).convert("RGB")
     st.image(img, caption="ภาพที่อัปโหลด", use_column_width=True)
 
-    # --- พยากรณ์แบบ 'ดิบ' ตามลำดับที่โมเดลให้มา ---
+    # --- ค่าดิบจากโมเดล ---
     prob_raw = predict(model, img, device)  # [p0, p1]
-    names_raw = class_names.copy()
+    names_raw = class_names[:]              # ['Healthy','Unhealthy'] หรืออย่างอื่น
 
-    # --- ขั้นที่ 1: flip ถ้าจำเป็น ---
-    prob = prob_raw
-    names = names_raw
+    # ทำให้ deterministic: เริ่มจากค่าดิบทุกครั้ง
+    names = names_raw[:]
+    prob = prob_raw.copy()
+
+    # ขั้นที่ 1: flip ถ้าผู้ใช้สั่ง
     if flip:
         prob = prob[::-1]
         names = names[::-1]
 
-    # --- ขั้นที่ 2: บังคับ mapping ตามที่ผู้ใช้เลือก ---
-    # อยากให้ Healthy เป็น index ไหน ก็หมุนให้ตรง
-    # หลังจบขั้นนี้ 'names[0]' จะเป็น Healthy เสมอ
-    if mapping_choice == "index 1 คือ Healthy":
-        if names[0] != "Healthy":
-            prob = prob[::-1]
-            names = names[::-1]
-    else:  # "index 0 คือ Healthy"
-        if names[0] != "Healthy":
-            prob = prob[::-1]
-            names = names[::-1]
+    # ขั้นที่ 2: บังคับให้ "Healthy label" ไปอยู่ที่ index 0 เสมอ
+    # ถ้าสิ่งที่ผู้ใช้เลือก (healthy_label_pick) อยู่ที่ index 1 ตอนนี้ → พลิก
+    if healthy_label_pick == names[1]:
+        prob = prob[::-1]
+        names = names[::-1]
+    # ถ้า healthy_label_pick == names[0] ก็ไม่ต้องทำอะไร
 
-    # --- สรุปผล ---
+    # -------- แสดงผล --------
     top = int(prob.argmax())
     label = names[top]
     conf = float(prob[top])
@@ -121,12 +116,12 @@ if img_file:
         st.metric(names[1], f"{prob[1]:.2f}")
         st.progress(min(max(float(prob[1]), 0.0), 1.0))
 
-    # Debug panel (เผื่ออยากดูค่าดิบ)
-    with st.expander("รายละเอียด/ค่าดิบที่โมเดลให้มา (สำหรับตรวจสอบ)"):
+    with st.expander("รายละเอียด/ค่าดิบเพื่อการตรวจสอบ"):
         st.write("class_names (ดิบจากโมเดล):", names_raw)
         st.write("prob (ดิบจากโมเดล):", {names_raw[i]: float(p) for i, p in enumerate(prob_raw)})
-        st.write("class_names (หลังปรับตามตัวเลือก):", names)
-        st.write("prob (หลังปรับตามตัวเลือก):", {names[i]: float(p) for i, p in enumerate(prob)})
+        st.write("Healthy (ที่เลือก):", healthy_label_pick)
+        st.write("class_names (หลังปรับ):", names)
+        st.write("prob (หลังปรับ):", {names[i]: float(p) for i, p in enumerate(prob)})
 
 else:
     st.info("ลาก–วาง หรือกดเลือกไฟล์ เพื่อทำนายสุขภาพของอาหารจากรูปภาพ 📸")
