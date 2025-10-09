@@ -1,7 +1,7 @@
 # build tools ป้องกัน error distutils/wheel
 setuptools==69.5.1
 wheel==0.41.2
-openai>=1.42.0
+
 # deps สำหรับรันแอป (รุ่นใหม่ ให้ตรงกับ pickle ที่มีฟิลด์ missing_go_to_left)
 streamlit==1.35.0
 yfinance==0.2.65
@@ -16,5 +16,5 @@ pytz
 pillow==10.3.0
 torch==2.2.2
 torchvision==0.17.2
-openai==0.28.1
+openai>=1.42.0
 
