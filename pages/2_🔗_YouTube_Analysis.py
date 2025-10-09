@@ -75,7 +75,8 @@ st.markdown(
 )
 
 # ภาพตารางอันดับ (แทนด้วย placeholder)
-placeholder(320, "Top Youtube channels - Thailand (image)")
+st.image("../top_youtube_thailand.webp", use_column_width=True)
+
 
 section_divider()
 
