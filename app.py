@@ -113,7 +113,7 @@ with left:
 
 with right:
     st.subheader("ข้อมูลติดต่อ")
-    st.write("📧 อีเมล: someone@example.com")
+    st.write("📧 อีเมล: kl.pawin_st@tni.ac.th")
     st.write("🌐 เว็บไซต์/Portfolio: https://example.com")
     st.write("🏠 ที่อยู่: Bangkok, TH")
 
