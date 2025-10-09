@@ -98,7 +98,6 @@ section_divider()
 
 # ---------- บล็อกโค้ด (ภาพ/โค้ดตัวอย่าง) ----------
 st.markdown("#### ตัวอย่างโค้ด (import / requests / bs4 / pandas / matplotlib / seaborn)")
-st.image("assets/code2.jpg", use_column_width=True)
 
 # สรุป bullet list
 st.markdown(
@@ -113,7 +112,7 @@ st.markdown(
 )
 
 # บล็อกภาพ/โค้ดเพิ่มเติม
-placeholder(200, "โค้ดตัวอย่าง: request + BeautifulSoup + ตาราง (ภาพ)")
+st.image("assets/code2.jpg", use_column_width=True)
 
 st.markdown(
     """
