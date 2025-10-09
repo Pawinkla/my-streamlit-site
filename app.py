@@ -5,7 +5,7 @@ st.title("👤 Profile Page")
 
 left, right = st.columns([1, 2])
 with left:
-    st.image("https://avatars.githubusercontent.com/u/1?v=4", width=160)  # เปลี่ยนเป็นรูปของคุณ
+    st.image("assets/Pawin.jpg", width=160)  # เปลี่ยนเป็นรูปของคุณ
 with right:
     st.markdown("""
 **ชื่อ:ภวินท์ กล้าทำ**  
