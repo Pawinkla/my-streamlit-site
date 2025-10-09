@@ -1,183 +1,162 @@
-# pages/4_🥗_Healthy_vs_Junk_Food.py
 # -*- coding: utf-8 -*-
-
-import os
 import io
-from typing import List, Tuple
+import json
+import base64
+import streamlit as st
+from PIL import Image
 
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
-from PIL import Image
-import streamlit as st
+import torchvision.models as models
+import torchvision.transforms as transforms
 
+# ========== CONFIG ==========
+OPENAI_API_KEY = ""   # <<< วางคีย์ตรงนี้
+GPT_MODEL = "gpt-4o-mini"                            # โมเดลวิชั่น (รองรับภาพ) ของ OpenAI
+# ============================
 
-# -----------------------------
-# ตั้งค่าเริ่มต้น
-# -----------------------------
-st.set_page_config(
-    page_title="Healthy vs Junk Food",
-    page_icon="🥗",
-    layout="centered",
-)
+st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗", layout="centered")
+st.title("Healthy vs Junk Food 🥗")
 
-MODEL_PATH = "model/best_model.pt"
-CLASS_NAMES_DEFAULT = ["Healthy", "Unhealthy"]   # ให้ชื่อคลาสเรียงตามที่คุณเทรน
-
-
-# -----------------------------
-# ฟังก์ชันโหลดโมเดล (โหมดถึก)
-# รองรับหลายรูปแบบการ save:
-#   - torch.save(model)
-#   - torch.save(model.state_dict())
-#   - torch.save({'model': state_dict, 'class_names': ...})
-#   - เคส DataParallel ที่คีย์ขึ้นต้น "module."
-# -----------------------------
+# ------------ โหลดโมเดลของคุณ (ResNet18 2-class) ------------
 @st.cache_resource
-def load_model(path: str, device: str = "cpu") -> Tuple[nn.Module, List[str]]:
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"ไม่พบไฟล์โมเดล: {path}")
-
-    ckpt = torch.load(path, map_location=device)
-
-    # 1) ถ้า save มาเป็น "ตัวโมเดลทั้งตัว"
-    if isinstance(ckpt, nn.Module):
-        model = ckpt.to(device)
-        model.eval()
-        class_names = getattr(model, "class_names", CLASS_NAMES_DEFAULT)
-        class_names = list(map(str, class_names))
-        return model, class_names
-
-    # 2) ถ้าเป็น dict, หา state_dict ตามคีย์ยอดนิยม
-    state_dict = None
-    if isinstance(ckpt, dict):
-        for k in ["model", "state_dict", "model_state_dict"]:
-            if k in ckpt and isinstance(ckpt[k], dict):
-                state_dict = ckpt[k]
-                break
-        if state_dict is None and all(isinstance(v, torch.Tensor) for v in ckpt.values()):
-            # น่าจะเป็น state_dict ตรง ๆ
-            state_dict = ckpt
-    if state_dict is None:
-        raise RuntimeError(
-            "ไฟล์โมเดลไม่อยู่ในรูปแบบที่รู้จัก (nn.Module หรือ state_dict หรือ {'model': ...})"
-        )
-
-    # 3) ถ้าคีย์เป็น DataParallel (ขึ้นต้น 'module.')
-    if all(isinstance(k, str) and k.startswith("module.") for k in state_dict.keys()):
-        new_sd = {}
-        for k, v in state_dict.items():
-            new_sd[k.replace("module.", "", 1)] = v
-        state_dict = new_sd
-
-    # 4) ประกอบสถาปัตย์ให้ตรงกับที่เทรน: ResNet18 + head 2 คลาส
+def load_food_model(model_path="model/best_model.pt", device="cpu"):
+    device = torch.device(device)
     model = models.resnet18(weights=None)
-    model.fc = nn.Sequential(
-        nn.Linear(model.fc.in_features, 128),
-        nn.ReLU(),
-        nn.Dropout(0.2),
-        nn.Linear(128, 2),
+    num_features = model.fc.in_features
+    model.fc = nn.Linear(num_features, 2)  # 2 classes: Healthy / Unhealthy
+    sd = torch.load(model_path, map_location=device)
+    model.load_state_dict(sd)
+    model.eval().to(device)
+    return model, device
+
+model, device = load_food_model()
+
+# ------------ Transform -------------
+tfm = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=(0.485, 0.456, 0.406),
+                         std=(0.229, 0.224, 0.225)),
+])
+
+# ------------ ฟังก์ชัน inference -------------
+@torch.inference_mode()
+def predict(img: Image.Image):
+    x = tfm(img.convert("RGB")).unsqueeze(0).to(device)
+    logits = model(x)
+    probs = torch.softmax(logits, dim=1).cpu().numpy().ravel()
+    idx = int(probs.argmax())
+    classes = ["Healthy", "Unhealthy"]
+    return classes[idx], float(probs[0]), float(probs[1])
+
+# ========== ส่วน GPT: ประมาณแคลอรี่จากรูป ==========
+def _to_base64(image: Image.Image) -> str:
+    buf = io.BytesIO()
+    image.convert("RGB").save(buf, format="JPEG", quality=95)
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+def estimate_calories_with_gpt(image: Image.Image, detail_hint: str = ""):
+    """
+    เรียก OpenAI Vision ให้ตอบเป็น JSON:
+      { "calories_kcal": number, "confidence": 0-1, "items": [ { "name": str, "kcal": number } ] }
+    """
+    import openai   # ใช้ไลบรารี openai (SDK ใหม่)
+    openai.api_key = OPENAI_API_KEY
+
+    img_b64 = _to_base64(image)
+    system_prompt = (
+        "You are a nutrition assistant. "
+        "Given a meal photo, estimate the total calories (kcal). "
+        "List key items with rough kcal breakdown. "
+        "Respond ONLY in JSON with keys: calories_kcal, confidence, items[]."
+    )
+    user_prompt = (
+        "Estimate calories of this meal. If uncertain, give your best reasonable guess."
+        + (f" Extra context: {detail_hint}" if detail_hint else "")
     )
 
-    # ตั้ง strict=False เพื่อยืดหยุ่น (ป้องกันบัฟเฟอร์คีย์ไม่ตรงบางตัว)
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    # ใช้เส้นทาง Chat Completions ที่รองรับวิชั่น (ข้อความ + รูป)
+    # โครง content แบบ text + image_url (data URL)
+    data_url = f"data:image/jpeg;base64,{img_b64}"
 
-    if missing:
-        st.warning(
-            f"weights บางส่วนไม่พบในโมเดล: {missing[:8]}{' ...' if len(missing) > 8 else ''}"
-        )
-    if unexpected:
-        st.warning(
-            f"พบคีย์ส่วนเกินในไฟล์ weights: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}"
-        )
-
-    model.to(device).eval()
-
-    # 5) class_names หากบันทึกไว้ใน checkpoint
-    class_names = CLASS_NAMES_DEFAULT
-    if isinstance(ckpt, dict) and "class_names" in ckpt:
-        try:
-            class_names = list(map(str, ckpt["class_names"]))
-        except Exception:
-            pass
-
-    return model, class_names
-
-
-# -----------------------------
-# Transform สำหรับภาพ
-# -----------------------------
-def build_transform(img_size: int = 224):
-    return transforms.Compose(
-        [
-            transforms.Resize((img_size, img_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225),
-            ),
-        ]
+    completion = openai.ChatCompletion.create(
+        model=GPT_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ],
+        temperature=0.2,
+        max_tokens=300,
     )
 
+    text = completion.choices[0].message["content"]
+    # พยายาม parse JSON จากข้อความตอบ
+    # เผื่อมีอักขระแปลก ให้หาบล็อค JSON ตัวแรก
+    try:
+        # ตัดโค้ดบล็อคกรณีมี ```json ... ```
+        if "```" in text:
+            text = text.split("```", 2)[1]
+            if text.lower().startswith("json"):
+                text = text[4:]
+        data = json.loads(text)
+        return {
+            "ok": True,
+            "calories_kcal": float(data.get("calories_kcal", 0)),
+            "confidence": float(data.get("confidence", 0)),
+            "items": data.get("items", []),
+            "raw": text,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Cannot parse JSON: {e}", "raw": text}
 
-# -----------------------------
-# ฟังก์ชันพยากรณ์
-# -----------------------------
-def predict_image(
-    model: nn.Module,
-    image: Image.Image,
-    device: str,
-) -> torch.Tensor:
-    tfm = build_transform(224)
-    with torch.no_grad():
-        x = tfm(image.convert("RGB")).unsqueeze(0).to(device)
-        logits = model(x)
-        probs = logits.softmax(dim=1).squeeze(0).cpu()
-    return probs
+# ========== UI ==========
 
+uploaded = st.file_uploader("อัปโหลดรูปอาหาร (JPG/PNG)", type=["jpg", "jpeg", "png"])
+hint = st.text_input("(ไม่จำเป็น) บอกคำ 힌ต์เพิ่มเติมให้ GPT เช่น 'อกไก่ย่าง อะโวคาโด ผักสลัด น้ำสลัดงาญี่ปุ่น'", "")
 
-# -----------------------------
-# UI
-# -----------------------------
-st.title("Healthy vs Junk Food  🥗")
+if uploaded:
+    img = Image.open(uploaded)
+    st.image(img, caption="ภาพที่อัปโหลด", use_column_width=True)
 
-# โหลดโมเดล
-device = "cpu"  # Streamlit Cloud มักจะเป็น CPU
-try:
-    model, class_names = load_model(MODEL_PATH, device=device)
-    st.success(f"โหลดโมเดลสำเร็จจาก `{MODEL_PATH}` (อุปกรณ์: {device.upper()})")
-except Exception as e:
-    st.error(f"โหลดโมเดลไม่สำเร็จ: {e}")
-    st.stop()
+    label, p_healthy, p_unhealthy = predict(img)
+    st.subheader("ผลลัพธ์")
+    st.markdown(f"**คำตอบ:** {label}")
+    st.caption(f"ความมั่นใจ (Healthy): {p_healthy*100:.2f}% — (Unhealthy): {p_unhealthy*100:.2f}%")
 
-# ตัวเลือกอัปโหลดภาพ
-st.markdown("### อัปโหลดรูปอาหาร (JPG/PNG)")
-file = st.file_uploader(
-    "Drag & drop หรือกดปุ่มเพื่อเลือกไฟล์",
-    type=["jpg", "jpeg", "png"],
-)
+    # ===== แสดงแคลอรี่ด้วย GPT ใต้ผลลัพธ์ =====
+    with st.spinner("ประมาณแคลอรี่ด้วย GPT…"):
+        g = estimate_calories_with_gpt(img, hint.strip())
+    if g.get("ok"):
+        st.markdown("### 🔥 ประมาณแคลอรี่ (GPT)")
+        st.markdown(f"**ประมาณ:** ~ **{g['calories_kcal']:.0f} kcal**  \n"
+                    f"**ความมั่นใจ (GPT):** {g['confidence']*100:.1f}%")
+        if g.get("items"):
+            st.markdown("**รายการหลัก (ประมาณ):**")
+            for it in g["items"]:
+                name = it.get("name", "item")
+                kcal = it.get("kcal", None)
+                if kcal is not None:
+                    st.markdown(f"- {name}: ~{kcal:.0f} kcal")
+                else:
+                    st.markdown(f"- {name}")
+        with st.expander("ผลดิบจาก GPT (JSON)"):
+            st.code(json.dumps({
+                "calories_kcal": g["calories_kcal"],
+                "confidence": g["confidence"],
+                "items": g["items"],
+            }, ensure_ascii=False, indent=2), language="json")
+    else:
+        st.error("ประเมินแคลอรี่ล้มเหลว")
+        st.caption(g.get("error", ""))
+        with st.expander("ข้อความตอบกลับจาก GPT"):
+            st.code(g.get("raw", ""), language="json")
 
-if file is not None:
-    # แสดงภาพ
-    image = Image.open(io.BytesIO(file.read()))
-    st.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
-
-    # พยากรณ์
-    probs = predict_image(model, image, device)
-    pred_idx = int(probs.argmax().item())
-    pred_name = class_names[pred_idx] if pred_idx < len(class_names) else f"class_{pred_idx}"
-    confidence = float(probs[pred_idx].item())
-
-    st.markdown("### ผลลัพธ์")
-    st.subheader(f"คำตอบ: **{pred_name}**")
-    st.caption(f"ความมั่นใจ: {confidence:.2%}")
-
-    # แสดง bars ของทุกคลาส
-    st.markdown("---")
-    st.markdown("**Probability ของแต่ละคลาส**")
-    for i, p in enumerate(probs.tolist()):
-        name = class_names[i] if i < len(class_names) else f"class_{i}"
-        st.write(f"{name}: {p:.2%}")
-        st.progress(min(max(p, 0.0), 1.0))
 else:
-    st.info("อัปโหลดรูปภาพเพื่อให้โมเดลพยากรณ์")
+    st.info("ลาก-วาง หรือเลือกไฟล์ เพื่อทำงานสุขภาพของอาหารและประมาณแคลอรี่ภาพ")
