@@ -153,7 +153,7 @@ st.markdown(
 - `plt.show()` : แสดงกราฟ  
     """
 )
-st.image("assets/code4.jpg", use_column_width=True)
+st.image("assets/code5.jpg", use_column_width=True)
 section_divider()
 
 st.markdown(
@@ -167,7 +167,9 @@ st.markdown(
 - `แสดงข้อมูล 5 แถวแรก
     """
 )
-# ---------- ส่วน “จัดการข้อความไทย/ฟอนต์/โมจิบาเกะ” ----------
+st.image("assets/code6.jpg", use_column_width=True)
+st.image("assets/code7.jpg", use_column_width=True)
+
 section_divider()
 st.markdown("### การตั้งค่าฟอนต์และแก้ encoding (mojibake) สำหรับชื่อช่องภาษาไทย")
 placeholder(340, "โค้ด: ติดตั้ง/ตั้งค่าฟอนต์ + ฟังก์ชันแก้ mojibake (ภาพ)")
