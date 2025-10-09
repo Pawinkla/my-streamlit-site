@@ -124,7 +124,7 @@ st.markdown(
 )
 
 # สคริปต์วนลูปอ่านแถว/คอลัมน์
-placeholder(280, "โค้ดวนลูปอ่านแถว/คอลัมน์ (ภาพ)")
+st.image("assets/code3.jpg", use_column_width=True)
 
 st.markdown(
     """
@@ -141,7 +141,7 @@ st.markdown(
 )
 
 # กราฟ matplotlib (ภาพ)
-placeholder(300, "กราฟ matplotlib (ภาพ)")
+st.image("assets/code4.jpg", use_column_width=True)
 
 st.markdown(
     """
@@ -153,23 +153,20 @@ st.markdown(
 - `plt.show()` : แสดงกราฟ  
     """
 )
-
+st.image("assets/code4.jpg", use_column_width=True)
 section_divider()
 
-# ---------- บทสรุปภาพรวม (ข้อ bullet) ----------
 st.markdown(
     """
-### สรุปแนวทางการทำงาน
-- โหลดเว็บเพจด้วย `requests`  
-- ใช้ `BeautifulSoup` แปลง/ค้นหา HTML (ตาราง/คอลัมน์)  
-- ใช้ `pandas.read_html()` หรือสร้าง DataFrame เอง  
-- ลบช่องว่าง/ปรับชื่อคอลัมน์เป็น snake case  
-- แสดงตัวอย่างข้อมูลด้วย `df.head()`  
-    """,
+- `โหลดเว็บเพจด้วย requests  
+- `ใช้ BeautifulSoup แปลง HTML ของเว็บ  
+- `หา <table> แรกในหน้าเว็บ  
+- `ใช้ pandas.read_html() แปลงตาราง HTML เป็น DataFrame
+- `ลบช่องว่างชื่อคอลัมน์
+- `เปลี่ยนชื่อคอลัมน์บางอันให้สั้นลง เช่น 'Video title' → 'Vdo_name', 'Likes' → 'likes'
+- `แสดงข้อมูล 5 แถวแรก
+    """
 )
-
-placeholder(260, "โค้ดตัวอย่าง (ภาพ)")
-
 # ---------- ส่วน “จัดการข้อความไทย/ฟอนต์/โมจิบาเกะ” ----------
 section_divider()
 st.markdown("### การตั้งค่าฟอนต์และแก้ encoding (mojibake) สำหรับชื่อช่องภาษาไทย")
