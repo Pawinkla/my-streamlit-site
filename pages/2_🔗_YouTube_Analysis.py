@@ -169,7 +169,7 @@ st.markdown(
 )
 st.image("assets/code6.jpg", use_column_width=True)
 st.image("assets/code7.jpg", use_column_width=True)
-st.image("assets/code8.jpg", use_column_width=True)
+
 section_divider()
 st.markdown("### การตั้งค่าฟอนต์และแก้ encoding (mojibake) สำหรับชื่อช่องภาษาไทย")
 placeholder(340, "โค้ด: ติดตั้ง/ตั้งค่าฟอนต์ + ฟังก์ชันแก้ mojibake (ภาพ)")
