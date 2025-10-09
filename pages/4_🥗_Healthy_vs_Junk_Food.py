@@ -11,10 +11,9 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 # ========== CONFIG ==========
-import streamlit as st
+# เก็บคีย์ไว้ใน Secrets ของ Streamlit Cloud: OPENAI_API_KEY="sk-..."
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-
-GPT_MODEL = "gpt-4o-mini"                            # โมเดลวิชั่น (รองรับภาพ) ของ OpenAI
+GPT_MODEL = "gpt-4o-mini"   # โมเดล Vision ของ OpenAI
 # ============================
 
 st.set_page_config(page_title="Healthy vs Junk Food", page_icon="🥗", layout="centered")
@@ -63,7 +62,7 @@ def estimate_calories_with_gpt(image: Image.Image, detail_hint: str = ""):
     เรียก OpenAI Vision ให้ตอบเป็น JSON:
       { "calories_kcal": number, "confidence": 0-1, "items": [ { "name": str, "kcal": number } ] }
     """
-    import openai   # ใช้ไลบรารี openai (SDK ใหม่)
+    import openai  # ไลบรารี openai (เวอร์ชัน ChatCompletion)
     openai.api_key = OPENAI_API_KEY
 
     img_b64 = _to_base64(image)
@@ -78,8 +77,6 @@ def estimate_calories_with_gpt(image: Image.Image, detail_hint: str = ""):
         + (f" Extra context: {detail_hint}" if detail_hint else "")
     )
 
-    # ใช้เส้นทาง Chat Completions ที่รองรับวิชั่น (ข้อความ + รูป)
-    # โครง content แบบ text + image_url (data URL)
     data_url = f"data:image/jpeg;base64,{img_b64}"
 
     completion = openai.ChatCompletion.create(
@@ -100,10 +97,8 @@ def estimate_calories_with_gpt(image: Image.Image, detail_hint: str = ""):
 
     text = completion.choices[0].message["content"]
     # พยายาม parse JSON จากข้อความตอบ
-    # เผื่อมีอักขระแปลก ให้หาบล็อค JSON ตัวแรก
     try:
-        # ตัดโค้ดบล็อคกรณีมี ```json ... ```
-        if "```" in text:
+        if "```" in text:  # เผื่อโมเดลส่งใน code fence
             text = text.split("```", 2)[1]
             if text.lower().startswith("json"):
                 text = text[4:]
@@ -121,7 +116,7 @@ def estimate_calories_with_gpt(image: Image.Image, detail_hint: str = ""):
 # ========== UI ==========
 
 uploaded = st.file_uploader("อัปโหลดรูปอาหาร (JPG/PNG)", type=["jpg", "jpeg", "png"])
-hint = st.text_input("(ไม่จำเป็น) บอกคำ 힌ต์เพิ่มเติมให้ GPT เช่น 'อกไก่ย่าง อะโวคาโด ผักสลัด น้ำสลัดงาญี่ปุ่น'", "")
+hint = st.text_input("(ไม่จำเป็น) ใส่คำใบ้ให้ GPT เช่น 'อกไก่ย่าง อะโวคาโด ผักสลัด น้ำสลัดงาญี่ปุ่น'", "")
 
 if uploaded:
     img = Image.open(uploaded)
@@ -137,17 +132,17 @@ if uploaded:
         g = estimate_calories_with_gpt(img, hint.strip())
     if g.get("ok"):
         st.markdown("### 🔥 ประมาณแคลอรี่ (GPT)")
-        st.markdown(f"**ประมาณ:** ~ **{g['calories_kcal']:.0f} kcal**  \n"
-                    f"**ความมั่นใจ (GPT):** {g['confidence']*100:.1f}%")
+        st.markdown(
+            f"**ประมาณ:** ~ **{g['calories_kcal']:.0f} kcal**  \n"
+            f"**ความมั่นใจ (GPT):** {g['confidence']*100:.1f}%"
+        )
         if g.get("items"):
             st.markdown("**รายการหลัก (ประมาณ):**")
             for it in g["items"]:
                 name = it.get("name", "item")
                 kcal = it.get("kcal", None)
-                if kcal is not None:
-                    st.markdown(f"- {name}: ~{kcal:.0f} kcal")
-                else:
-                    st.markdown(f"- {name}")
+                st.markdown(f"- {name}" + (f": ~{kcal:.0f} kcal" if kcal is not None else ""))
+
         with st.expander("ผลดิบจาก GPT (JSON)"):
             st.code(json.dumps({
                 "calories_kcal": g["calories_kcal"],
@@ -159,6 +154,5 @@ if uploaded:
         st.caption(g.get("error", ""))
         with st.expander("ข้อความตอบกลับจาก GPT"):
             st.code(g.get("raw", ""), language="json")
-
 else:
-    st.info("ลาก-วาง หรือเลือกไฟล์ เพื่อทำงานสุขภาพของอาหารและประมาณแคลอรี่ภาพ")
+    st.info("ลาก-วาง หรือเลือกไฟล์ เพื่อวิเคราะห์สุขภาพของอาหารและประมาณแคลอรี่จากภาพ")
