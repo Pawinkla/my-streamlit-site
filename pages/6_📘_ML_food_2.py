@@ -1,142 +1,296 @@
 # -*- coding: utf-8 -*-
-# Streamlit page: โชว์โค้ดโปรเจกต์ Healthy vs Junk Food (4 หัวข้อใหญ่ + ต่อยอด)
-# วางไฟล์นี้ไว้ที่ pages/6_📘_Show_Code_Food_Project.py
+# 📘 หน้าโชว์โค้ดโปรเจกต์ Healthy vs Junk Food (ฝังโค้ดไว้ตรง ๆ ไม่อ่านจากไฟล์)
+# วางไฟล์นี้ในโฟลเดอร์ pages/ ของแอป Streamlit
 
 import streamlit as st
-from pathlib import Path
-import re
-import textwrap
 
 st.set_page_config(page_title="โชว์โค้ด Healthy vs Junk Food", page_icon="📘", layout="wide")
 st.title("📘 โชว์โค้ดโปรเจกต์: Healthy vs Junk Food")
-st.caption("สรุป 4 ส่วนหลักของงาน + โค้ดสำคัญที่ใช้จริง พร้อมแนวทางต่อยอด")
+st.caption("4 ส่วนหลักที่ใช้จริง + โค้ดสำคัญ พร้อมแนวคิดและคำสั่งรัน")
 
-ROOT = Path(".")
-FILES = {
-    "mapping": ROOT / "mapping_rules.py",
-    "prepare": ROOT / "prepare_dataset.py",
-    "train":   ROOT / "train.py",
-    "predict": ROOT / "predict.py",
-    "readme":  ROOT / "README.md",
-}
-
-def read_text(p: Path) -> str:
-    if p.exists():
-        try:
-            return p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            return p.read_text(errors="ignore")
-    return f"# ไม่พบไฟล์: {p}"
-
-def cut_block(text: str, pattern: str, fallback_all: bool = True) -> str:
-    """
-    ดึงเฉพาะบล็อกโค้ดที่สนใจด้วย regex pattern (DOTALL).
-    ถ้าไม่เจอและ fallback_all=True จะคืนทั้งไฟล์
-    """
-    m = re.search(pattern, text, flags=re.DOTALL)
-    if m:
-        return textwrap.dedent(m.group(0)).strip()
-    return text if fallback_all else "# (ไม่พบบล็อกที่ต้องการ)"
-
-# --------------------------
-# 1) Mapping Rules
-# --------------------------
+# -------------------------------------------------------------------
+# 1) RULE-BASED MAPPING
+# -------------------------------------------------------------------
 st.header("1) กฎจัดกลุ่มอาหาร (Rule-based Mapping)")
 st.markdown(
-    "- จุดประสงค์: แปลงชื่อโฟลเดอร์/คลาสดิบ → **Healthy / Unhealthy**\n"
-    "- แนวคิด: เช็กลิสต์คำที่เป็นสัญญาณของอาหารมัน/ทอด/หวานฯลฯ เทียบกับลิสต์อาหารคลีน/นึ่ง/ย่าง"
+    "- เป้าหมาย: แปลง **ชื่อโฟลเดอร์/คลาสดิบ** เป็นป้ายกำกับ `Healthy / Unhealthy`\n"
+    "- แนวคิด: ถ้าเจอคีย์เวิร์ดแบบทอด/หวาน/มัน → Unhealthy, ถ้าเจอคีย์เวิร์ดนึ่ง/ย่าง/ผักเยอะ → Healthy\n"
+    "- ถ้าไม่เข้าเงื่อนไข ให้ **ค่าเริ่มต้น = Healthy** เพื่อเลี่ยง false positive ว่าเป็น junk"
 )
 
-mapping_src = read_text(FILES["mapping"])
-mapping_key = cut_block(mapping_src, r"def\s+map_class_to_label\(.*?^\s*return\s+\"Healthy\"\s*$")
-with st.expander("ดูโค้ดสำคัญ: map_class_to_label()", expanded=True):
-    st.code(mapping_key, language="python")
-with st.expander("ดูไฟล์ mapping_rules.py ทั้งไฟล์"):
-    st.code(mapping_src, language="python")
+code_mapping = r'''
+# mapping_rules.py — ฟังก์ชันหลัก
+def map_class_to_label(cls_name: str) -> str:
+    c = cls_name.lower().strip()
 
-# --------------------------
-# 2) เตรียมชุดข้อมูล (CSV)
-# --------------------------
-st.header("2) เตรียมข้อมูล Train/Val เป็น CSV")
+    # (ตัวอย่าง) ลิสต์ชื่อเมนูที่ถือว่าไม่เฮลตี้
+    JUNK_LIST = {"fried_chicken","pizza","burger","donut","เค้ก","ข้าวผัด","ผัดไทย","บิงซู","ชาเย็น","ชานมไข่มุก"}
+    # (ตัวอย่าง) ลิสต์ชื่อเมนูที่ถือว่าเฮลตี้
+    HEALTHY_LIST = {"salad","caprese_salad","beet_salad","ปลานึ่ง","ปลาเผา","ไก่ย่าง","ยำวุ้นเส้น","ต้มยำ","แกงจืด"}
+
+    # คีย์เวิร์ดเสริม
+    JUNK_KEYWORDS = ["fried","deep_fried","fries","donut","cake","sugar","butter","ทอด","ชุบแป้ง","หวาน","มันเยิ้ม","ชานม"]
+    HEALTHY_KEYWORDS = ["salad","grilled","steamed","boiled","soup","ย่าง","นึ่ง","ลวก","แกงจืด","ผักเยอะ"]
+
+    if c in JUNK_LIST:            return "Unhealthy"
+    if c in HEALTHY_LIST:         return "Healthy"
+    if any(k in c for k in JUNK_KEYWORDS):     return "Unhealthy"
+    if any(k in c for k in HEALTHY_KEYWORDS):  return "Healthy"
+    return "Healthy"  # ค่าเริ่มต้น
+'''
+st.code(code_mapping, language="python")
+
+# -------------------------------------------------------------------
+# 2) DATA PREP → CSV
+# -------------------------------------------------------------------
+st.header("2) เตรียมข้อมูล: สแกนรูป → สร้าง CSV (Train/Val)")
 st.markdown(
-    "- สแกนโฟลเดอร์ `images/` → สร้าง `data/train.csv` และ `data/val.csv`\n"
-    "- ทำ **stratified split** โดยคงสัดส่วนคลาสไม่ให้เอียง"
+    "- สแกนโฟลเดอร์ `images/คลาส/รูปภาพ` แล้วแม็ปเป็น `filepath,label`\n"
+    "- แบ่ง **Train/Validation** แบบ stratified keeping class ratio\n"
+    "- ได้ไฟล์ `data/train.csv` และ `data/val.csv`"
 )
 
-prep_src = read_text(FILES["prepare"])
-prep_blocks = cut_block(prep_src, r"def\s+scan_images\(.*?def\s+write_csv\(.*?^if\s+__name__\s*==\s*\"__main__\":.*?$")
-with st.expander("ดูโค้ดสำคัญ: scan_images / stratified_split / write_csv / main()", expanded=True):
-    st.code(prep_blocks, language="python")
-with st.expander("ดูไฟล์ prepare_dataset.py ทั้งไฟล์"):
-    st.code(prep_src, language="python")
+code_prep = r'''
+# prepare_dataset.py — แปลงโฟลเดอร์รูปเป็น CSV
+import os, csv, random
+from typing import List, Tuple
 
-# --------------------------
-# 3) เทรนโมเดล ResNet-18
-# --------------------------
+def scan_images(images_dir: str) -> List[Tuple[str, str]]:
+    items = []
+    for cls in sorted(os.listdir(images_dir)):
+        cdir = os.path.join(images_dir, cls)
+        if not os.path.isdir(cdir):
+            continue
+        label = map_class_to_label(cls)  # เรียกใช้กฎจากข้อ (1)
+        for root, _, files in os.walk(cdir):
+            for f in files:
+                if f.lower().endswith((".jpg",".jpeg",".png",".bmp",".webp")):
+                    items.append((os.path.join(root, f), label))
+    return items
+
+def stratified_split(items, val_ratio=0.2, seed=42):
+    random.seed(seed)
+    by = {}
+    for p,l in items:
+        by.setdefault(l, []).append((p,l))
+    tr, va = [], []
+    for l, arr in by.items():
+        random.shuffle(arr)
+        n_val = max(1, int(len(arr) * val_ratio))
+        va += arr[:n_val]
+        tr += arr[n_val:]
+    random.shuffle(tr); random.shuffle(va)
+    return tr, va
+
+def write_csv(rows, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["filepath","label"])
+        w.writerows(rows)
+
+# วิธีใช้:
+# items = scan_images("./images")
+# tr, va = stratified_split(items, 0.2)
+# write_csv(tr, "data/train.csv"); write_csv(va, "data/val.csv")
+'''
+st.code(code_prep, language="python")
+
+# -------------------------------------------------------------------
+# 3) TRAINING — ResNet-18
+# -------------------------------------------------------------------
 st.header("3) เทรนโมเดล ResNet-18 (Fine-tune)")
 st.markdown(
-    "- โหลดเวท ResNet-18 จาก ImageNet → ปรับชั้นสุดท้ายให้เหลือ 2 คลาส\n"
+    "- โหลด **ResNet-18 (ImageNet weights)** → ปรับชั้นสุดท้ายเป็น 2 คลาส\n"
     "- ใช้ **CrossEntropyLoss + Adam**\n"
-    "- เซฟ **best_model.pt** เมื่อ val accuracy ดีขึ้น"
+    "- เซฟ `outputs/best_model.pt` เมื่อค่า **val acc** ดีขึ้น"
 )
 
-train_src = read_text(FILES["train"])
-train_key = cut_block(
-    train_src,
-    r"(weights\s*=\s*ResNet18_Weights\.IMAGENET1K_V1.*?model\.to\(device\).*?optimizer\s*=\s*torch\.optim\.Adam.*?for\s+epoch.*?print\(\"Best val acc\",\s*best_acc\))",
-)
-with st.expander("ดูโค้ดสำคัญ: สร้างโมเดล/ลูปเทรน/บันทึก best_model.pt", expanded=True):
-    st.code(train_key, language="python")
-with st.expander("ดูไฟล์ train.py ทั้งไฟล์"):
-    st.code(train_src, language="python")
+code_train = r'''
+# train.py — ส่วนสำคัญของการเทรน
+import torch
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, models
+from torchvision.models import ResNet18_Weights
+from PIL import Image
+import pandas as pd, os
 
-# --------------------------
-# 4) ทำนายภาพใหม่ (Inference)
-# --------------------------
-st.header("4) นำโมเดลมาใช้งาน (Predict)")
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD  = [0.229, 0.224, 0.225]
+
+class CsvImageDataset(Dataset):
+    def __init__(self, csv_path, tfm):
+        df = pd.read_csv(csv_path)
+        self.paths = df["filepath"].tolist()
+        labels = df["label"].tolist()
+        names = sorted(list(set(labels)))
+        self.name_to_idx = {n:i for i,n in enumerate(names)}
+        self.idx_to_name = names
+        self.labels = [self.name_to_idx[l] for l in labels]
+        self.tfm = tfm
+    def __len__(self): return len(self.paths)
+    def __getitem__(self, i):
+        img = Image.open(self.paths[i]).convert("RGB")
+        return self.tfm(img), self.labels[i]
+
+def build_loaders(csv_train, csv_val, bs=32):
+    tfm_tr = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+    tfm_va = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+    ds_tr = CsvImageDataset(csv_train, tfm_tr)
+    ds_va = CsvImageDataset(csv_val, tfm_va)
+    return (
+        DataLoader(ds_tr, batch_size=bs, shuffle=True,  num_workers=2, pin_memory=True),
+        DataLoader(ds_va, batch_size=bs, shuffle=False, num_workers=2, pin_memory=True),
+        ds_tr.idx_to_name
+    )
+
+def train(csv_train, csv_val, epochs=8, lr=3e-4, out_dir="outputs"):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    loader_tr, loader_va, class_names = build_loaders(csv_train, csv_val, 32)
+
+    model = models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    model.fc = nn.Sequential(
+        nn.Linear(model.fc.in_features, 128),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(128, len(class_names)),
+    )
+    model.to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    best_acc, best_path = 0.0, os.path.join(out_dir, "best_model.pt")
+    os.makedirs(out_dir, exist_ok=True)
+
+    for epoch in range(1, epochs+1):
+        # train
+        model.train(); tot, corr, loss_sum = 0, 0, 0.0
+        for x, y in loader_tr:
+            x, y = x.to(device), torch.tensor(y, dtype=torch.long, device=device)
+            optimizer.zero_grad()
+            out = model(x)
+            loss = criterion(out, y)
+            loss.backward(); optimizer.step()
+            loss_sum += float(loss) * x.size(0)
+            corr += (out.argmax(1)==y).sum().item()
+            tot  += x.size(0)
+        tr_loss, tr_acc = loss_sum/tot, corr/tot
+
+        # validate
+        model.eval(); tot, corr, loss_sum = 0, 0, 0.0
+        with torch.no_grad():
+            for x, y in loader_va:
+                x, y = x.to(device), torch.tensor(y, dtype=torch.long, device=device)
+                out = model(x); loss = criterion(out, y)
+                loss_sum += float(loss) * x.size(0)
+                corr += (out.argmax(1)==y).sum().item()
+                tot  += x.size(0)
+        va_loss, va_acc = loss_sum/tot, corr/tot
+
+        print(f"Epoch {epoch}/{epochs} | train {tr_acc:.3f} | val {va_acc:.3f}")
+        if va_acc > best_acc:
+            best_acc = va_acc
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "class_names": class_names,
+                "mean": IMAGENET_MEAN,
+                "std": IMAGENET_STD,
+            }, best_path)
+            print(f"Saved best: {best_path} (acc={best_acc:.3f})")
+
+# วิธีใช้:
+# train('data/train.csv','data/val.csv', epochs=8, lr=3e-4, out_dir='outputs')
+'''
+st.code(code_train, language="python")
+
+# -------------------------------------------------------------------
+# 4) INFERENCE — ใช้งานโมเดล
+# -------------------------------------------------------------------
+st.header("4) นำโมเดลมาใช้งาน (Predict/Inference)")
 st.markdown(
-    "- โหลด `best_model.pt` → เตรียมรูปขนาด 224×224 → ทำนายความน่าจะเป็นสองคลาส\n"
-    "- ใช้ใน CLI หรือฝังในแอปได้"
+    "- โหลด `best_model.pt` → เตรียมรูป 224×224 → softmax แล้วเลือกคลาสที่ความน่าจะเป็นสูงสุด\n"
+    "- ใช้ได้ทั้ง CLI, batch script หรือฝังในหน้า Streamlit อื่น"
 )
 
-pred_src = read_text(FILES["predict"])
-pred_key = cut_block(pred_src, r"(def\s+load_model\(.*?return\s+model,.*?mean,.*?std.*?def\s+main\(\):.*?if\s+__name__\s*==\s*\"__main__\":\s*main\(\))")
-with st.expander("ดูโค้ดสำคัญ: โหลดโมเดล + พรีโปรเซส + ทำนาย", expanded=True):
-    st.code(pred_key, language="python")
-with st.expander("ดูไฟล์ predict.py ทั้งไฟล์"):
-    st.code(pred_src, language="python")
+code_predict = r'''
+# predict.py — โหลดเช็คพอยต์แล้วทำนายภาพเดี่ยว
+import torch
+from PIL import Image
+from torchvision import transforms, models
 
-# --------------------------
-# คำสั่งที่ใช้จริง (ช่วยอธิบายบนเวที)
-# --------------------------
-st.subheader("คำสั่งที่รันจริง (สรุปสั้น ๆ)")
-st.code(
-    """# 1) เตรียม CSV
+def load_model(ckpt_path, device):
+    ckpt = torch.load(ckpt_path, map_location=device)
+    model = models.resnet18(weights=None)
+    model.fc = torch.nn.Sequential(
+        torch.nn.Linear(model.fc.in_features, 128),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0.2),
+        torch.nn.Linear(128, len(ckpt["class_names"])),
+    )
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.to(device).eval()
+    return model, ckpt["class_names"], ckpt["mean"], ckpt["std"]
+
+def predict_image(img_path, ckpt_path="outputs/best_model.pt"):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model, names, mean, std = load_model(ckpt_path, device)
+    tfm = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+    ])
+    img = Image.open(img_path).convert("RGB")
+    x = tfm(img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        prob = torch.softmax(model(x), dim=1)[0].cpu().numpy()
+    idx = int(prob.argmax())
+    return names[idx], float(prob[idx])
+
+# ตัวอย่าง:
+# label, p = predict_image("path/to/test.jpg", "outputs/best_model.pt")
+# print(label, p)
+'''
+st.code(code_predict, language="python")
+
+# -------------------------------------------------------------------
+# คำสั่งที่ใช้จริง
+# -------------------------------------------------------------------
+st.subheader("คำสั่งที่ใช้จริง (รันบนเทอร์มินัล)")
+st.code("""\
+# 1) เตรียม CSV
 python prepare_dataset.py --images_dir ./images --out_dir ./data --val_ratio 0.2
 
 # 2) เทรนโมเดล
 python train.py --csv_train data/train.csv --csv_val data/val.csv --epochs 8 --batch_size 32 --lr 3e-4 --out_dir outputs
 
-# 3) ทดสอบทำนายภาพเดี่ยว
+# 3) ทดสอบทำนาย
 python predict.py --ckpt outputs/best_model.pt --image path/to/test.jpg
-""",
-    language="bash",
-)
+""", language="bash")
 
-# --------------------------
-# นำไปใช้/ต่อยอด
-# --------------------------
-st.header("นำไปทำอะไร/ต่อยอดได้บ้าง?")
-st.markdown(
-    """
-- **แอปลดน้ำหนัก/รักสุขภาพ**: ให้ผู้ใช้ถ่ายรูปอาหารแล้วระบบบอกว่า *Healthy/Unhealthy* พร้อมทิปส์ปรับเมนู  
-- **เมนูร้านอาหาร/คาเฟ่**: ติดป้ายสุขภาพอัตโนมัติจากรูปเมนู ช่วยทำป้ายโภชนาการเบื้องต้น  
-- **ระบบแนะนำ (Recommender)**: แนะนำเมนูสุขภาพตามพฤติกรรมผู้ใช้ + เป้าหมายน้ำหนัก  
-- **ต่อยอดเป็น Multi-Class**: เพิ่มคลาสอาหาร 10–50 ประเภท พร้อมคะแนนแคลอรี่โดยประมาณ  
-- **อุตสาหกรรมเคาน์เตอร์แคชเชียร์ (POS/CCTV)**: ตรวจประเภทอาหารแบบเรียลไทม์เพื่อเก็บสถิติลูกค้า  
-- **วิจัย/การศึกษา**: เปรียบเทียบโมเดลเบา (MobileNet/Vit-Tiny) สำหรับรันบนมือถือ  
-- **MLOps**: ทำ Pipeline เต็มรูปแบบ (Data → Train → Evaluate → Deploy) + Monitor ค่า Accuracy และ Drift
-"""
-)
+# -------------------------------------------------------------------
+# ต่อยอดใช้งาน
+# -------------------------------------------------------------------
+st.header("โปรเจกต์นี้นำไปทำอะไร / ต่อยอดอะไรได้บ้าง?")
+st.markdown("""
+- **แอปช่วยกินเฮลตี้**: ผู้ใช้ถ่ายรูปอาหาร ระบบบอกว่า Healthy/Unhealthy พร้อมคำแนะนำปรับเมนู
+- **POS/CCTV ร้านอาหาร**: ติดกล้องหน้าครัว/แคชเชียร์ เพื่อนับสถิติเครื่องดื่มหวาน/ของทอดแบบเรียลไทม์
+- **เมนูดิจิทัล**: ติดป้ายสุขภาพอัตโนมัติ ใส่คะแนนความเฮลตี้ + คำเตือนน้ำตาล/ไขมัน
+- **Recommender ส่วนบุคคล**: แนะนำเมนูที่สอดคล้องกับเป้าหมายน้ำหนัก/แคลอรี่ของผู้ใช้
+- **ขยายเป็น Multi-Class**: จำแนกชนิดอาหาร 10–50 คลาส พร้อมประเมินแคลอรี่โดยประมาณ
+- **รันบนมือถือ**: แปลงเป็นโมเดลเบา (MobileNet/Vit-Tiny, TorchScript/ONNX) ใช้งานออฟไลน์
+- **MLOps เต็มระบบ**: Pipeline ดึงข้อมูล → เทรน → ประเมิน → ดีพลอย → มอนิเตอร์ model drift
+""")
 
-st.success("พร้อมพรีเซนต์: เปิดทีละหัวข้อ, โชว์โค้ดบล็อกสำคัญ, ปิดท้ายด้วยสรุปการใช้งานจริง 👍")
+st.success("พร้อมพรีเซนต์แล้ว! เปิดทีละหัวข้อ โชว์โค้ดบล็อกสำคัญ แล้วปิดด้วยการต่อยอด 👍")
