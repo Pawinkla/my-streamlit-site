@@ -1,49 +1,40 @@
 # pages/5_🧠_ML_Stock_1.py
 from pathlib import Path
 import json
+import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Conclusion • Stock Buy Prediction", page_icon="✅", layout="wide")
 
-# ---------- Small style tweaks ----------
+# ====== Style (เล็กน้อยให้ดูคลีน) ======
 st.markdown("""
 <style>
-h1, h2, h3 { letter-spacing: .2px; }
-.block-title {font-weight:700;font-size:20px;margin:6px 0 2px;}
-.subtle { color:#5f6c72; font-size:14.5px; }
-.hr { height:1px; background:linear-gradient(90deg,#e9eef2, #f6f8fa); border:0; margin:12px 0 16px; }
-.card {
-  border:1px solid #e8edf3; border-radius:14px; padding:14px 14px 12px;
-  background:linear-gradient(180deg,#ffffff 0%, #fcfdff 100%);
-  box-shadow: 0 1px 0 rgba(10,10,10,0.02);
-}
-.badge {display:inline-block; padding:2px 8px; font-size:12px; border-radius:999px; background:#eef6ff; border:1px solid #d6e7ff; color:#1e5a96;}
-.kicker { font-size:13px; color:#6b7b85; margin-bottom:2px; }
+h1,h2,h3{letter-spacing:.2px}
+.hr{height:1px;background:#edf2f7;margin:14px 0;border:0}
+.card{border:1px solid #e8edf3;border-radius:14px;padding:14px;background:#fff}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#eef6ff;border:1px solid #d6e7ff;color:#1e5a96;font-size:12px}
+.kicker{font-size:12.5px;color:#6b7b85;margin-bottom:6px}
+.block-title{font-weight:700;font-size:18px;margin:6px 0 2px}
+.subtle{color:#5f6c72}
 </style>
 """, unsafe_allow_html=True)
-
-# ---------- Title ----------
-st.title("สรุปโครงการ (Conclusion) ✅")
-st.caption("ML Project: Stock Buy Prediction — นำเสนอแบบย่อ พร้อมอธิบายฟีเจอร์ภาษาไทย")
 
 ROOT = Path(".")
 MODEL_META = ROOT / "model_meta.json"
 
-# ---------- Feature mapping (TH) ----------
+# ====== Meta (feature list / suffix / horizon) ======
 FEATURE_THAI = {
-    "revenue_growth_ttm":    ("การเติบโตของรายได้ (TTM)", "อัตราการเปลี่ยนแปลงของรายได้สะสมย้อนหลังเมื่อเทียบหน้าต่างก่อน"),
-    "gross_margin_ttm":      ("อัตรากำไรขั้นต้น (TTM)", "ความสามารถทำกำไรจากยอดขายก่อนค่าใช้จ่ายดำเนินงาน"),
-    "operating_margin_ttm":  ("อัตรากำไรจากการดำเนินงาน (TTM)", "ความสามารถทำกำไรจากธุรกิจหลักหลังหักค่าใช้จ่ายดำเนินงาน"),
-    "net_margin_ttm":        ("อัตรากำไรสุทธิ (TTM)", "กำไรสุดท้ายต่อรายได้ทั้งหมด"),
-    "roe_ttm":               ("ROE (TTM)", "กำไรสุทธิต่อส่วนของผู้ถือหุ้นเฉลี่ย—ชี้ประสิทธิภาพใช้ทุนผู้ถือหุ้น"),
-    "roa_ttm":               ("ROA (TTM)", "กำไรสุทธิต่อสินทรัพย์เฉลี่ย—ประสิทธิภาพใช้สินทรัพย์สร้างกำไร"),
-    "debt_to_equity":        ("Debt/Equity", "โครงสร้างทุน—หนี้รวมเทียบทุนผู้ถือหุ้น ยิ่งต่ำยิ่งปลอดภัย"),
-    "ocf_to_cl":             ("OCF / Current Liabilities", "สภาพคล่องจากกระแสเงินสดดำเนินงานเทียบหนี้สินหมุนเวียน"),
-    "interest_coverage":     ("Interest Coverage", "ความสามารถชำระดอกเบี้ย = EBIT / ดอกเบี้ยจ่าย"),
-    "asset_turnover_ttm":    ("Asset Turnover (TTM)", "ประสิทธิภาพใช้สินทรัพย์สร้างยอดขาย"),
+    "revenue_growth_ttm": ("การเติบโตของรายได้ (TTM)", "อัตราการเปลี่ยนแปลงของรายได้สะสมย้อนหลังเมื่อเทียบงวดก่อนหน้า"),
+    "gross_margin_ttm":   ("อัตรากำไรขั้นต้น (TTM)", "กำไรขั้นต้นต่อรายได้รวม"),
+    "operating_margin_ttm":("อัตรากำไรจากการดำเนินงาน (TTM)", "กำไรจากธุรกิจหลักหลังหักค่าใช้จ่ายดำเนินงาน"),
+    "net_margin_ttm":     ("อัตรากำไรสุทธิ (TTM)", "กำไรสุทธิต่อรายได้รวม"),
+    "roe_ttm":            ("ROE (TTM)", "กำไรสุทธิต่อส่วนของผู้ถือหุ้นเฉลี่ย"),
+    "roa_ttm":            ("ROA (TTM)", "กำไรสุทธิต่อสินทรัพย์เฉลี่ย"),
+    "debt_to_equity":     ("Debt/Equity", "หนี้สินรวมเทียบส่วนของผู้ถือหุ้น"),
+    "ocf_to_cl":          ("OCF / Current Liabilities", "กระแสเงินสดจากการดำเนินงานเทียบหนี้สินหมุนเวียน"),
+    "interest_coverage":  ("Interest Coverage", "EBIT / ดอกเบี้ยจ่าย"),
+    "asset_turnover_ttm": ("Asset Turnover (TTM)", "ประสิทธิภาพใช้สินทรัพย์สร้างยอดขาย"),
 }
-
-# ---------- Read meta (feature_cols / suffix / horizon) ----------
 feature_cols = list(FEATURE_THAI.keys())
 suffix = ".BK"
 horizon = 6
@@ -53,50 +44,35 @@ if MODEL_META.exists():
     suffix = meta.get("exchange_suffix", suffix)
     horizon = meta.get("forward_months", horizon)
 
-# ---------- Section 1 : Overview ----------
-st.header("Section 1: แนวคิดโปรเจกต์")
+# ====== โครงสร้างการนำเสนอ (เหมือน PDF) ======
+st.title("โครงสร้างการนำเสนอ (ML Project: Stock Buy Prediction)")
 st.markdown("""
-- ✅ ดึงข้อมูลอัตโนมัติจาก **Yahoo Finance** (งบรายไตรมาส/รายปี → คำนวณเป็น **TTM**)
-- ✅ ใช้ฟีเจอร์ทางการเงิน **10 ตัว** เพื่อจำแนกว่า **“น่าซื้อ / ไม่น่าซื้อ”** ใน **{h} เดือนข้างหน้า** บนตลาด `{suf}`
-- ✅ โมเดลหลัก: **Random Forest** พร้อมปรับ Threshold ตาม **F1-Score**
-- ✅ ส่งออกผลลัพธ์เป็นไฟล์รายงาน (Predictions & Feature Importance) เพื่อใช้งานต่อ
-""".format(h=horizon, suf=suffix))
+**1. แนะนำแนวคิดโปรเจกต์ (Overview)**  
+“โครงการนี้เป็นระบบ Machine Learning สำหรับคัดกรองหุ้นไทย โดยใช้ปัจจัยพื้นฐาน (Fundamental Factors) เช่น ROE, Debt-to-Equity, Margin, OCF/CL เพื่อทำนายว่าหุ้นนั้นมีแนวโน้ม ‘น่าซื้อ’ หรือไม่ในอีก 6 เดือนข้างหน้า”  :contentReference[oaicite:2]{index=2}
+
+- Flowchart (Input → Model → Output)  
+- Feature ตัวอย่างจาก `model_meta.json` เช่น ["ROE","ROA","Gross Margin","Debt/Equity","OCF/CL", ...]  :contentReference[oaicite:3]{index=3}
+""")
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-# ---------- Section 2 : Code (สั้นกระชับเหมือนเดิม) ----------
-st.header("Section 2: การสร้าง Feature และ Target")
+# ====== Section 2: โค้ดส่วนสำคัญ (เหมือน PDF) ======
+st.header("Section 2: แสดงโค้ดส่วนสำคัญ (จาก Auto_Fundamental_fixed_v7.py)")
+
+st.subheader("🔹 Section 1: การสร้าง Dataset")
+st.code(
+"""def build_dataset():
+    for tk in TICKERS:
+        t = yf.Ticker(tk + ".BK")
+        price_hist = t.history(period="max")
+        q_rows = extract_samples_quarterly(t, price)""",
+language="python")
+st.markdown("อธิบาย: ดึงข้อมูลจาก Yahoo Finance สำหรับหุ้นในตลาดไทย แล้วคำนวณตัวชี้วัดเป็น **TTM** (Trailing 12 Months). :contentReference[oaicite:4]{index=4}")
+
+st.subheader("🔹 Section 2: การสร้าง Feature และ Target")
 st.code('df["target"] = (df["forward_6m_return"] > 0).astype(int)', language="python")
-st.markdown("""
-**อธิบาย:**  
-- `target = 1` → ราคามีแนวโน้ม **ขึ้น** ใน {h} เดือน  
-- `target = 0` → **ไม่ขึ้น** (ลงหรือทรงตัว)
-""".format(h=horizon))
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+st.markdown("อธิบาย: Target = 1 หมายถึงราคาหุ้นขึ้นในอีก 6 เดือน, Target = 0 หมายถึงราคาลงหรือเท่าเดิม. :contentReference[oaicite:5]{index=5}")
 
-# ---------- Section 3 : ฟีเจอร์ที่ใช้ (ภาษาไทย) ----------
-st.header("Section 3: ฟีเจอร์ที่ใช้ (10 ตัว) — ภาษาไทย")
-
-# จัดการเป็นการ์ด 2 คอลัมน์
-cols = st.columns(2)
-for i, key in enumerate(feature_cols):
-    th_name, th_desc = FEATURE_THAI.get(key, (key, "-"))
-    with cols[i % 2]:
-        st.markdown(
-            f"""
-<div class="card">
-  <div class="kicker">feature key</div>
-  <div class="badge">{key}</div>
-  <div class="block-title">{th_name}</div>
-  <div class="subtle">{th_desc}</div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-# ---------- Section 4 : Pipeline & Training (ย่อ) ----------
-st.header("Section 4: Pipeline & Training (ย่อ)")
+st.subheader("🔹 Section 3: การสร้าง Pipeline และเทรนโมเดล")
 st.code(
 """pipe = Pipeline([
     ("imputer", SimpleImputer(strategy="median")),
@@ -105,22 +81,92 @@ st.code(
         random_state=42, class_weight="balanced_subsample"
     ))
 ])
-pipe.fit(X_train, y_train)""",
-    language="python",
-)
-st.markdown("""
-- ใช้ **RandomForestClassifier** เหมาะกับข้อมูลตัวเลขหลายมิติและทนทานต่อ outlier  
-- ปรับ **Threshold** ด้วยฟังก์ชันจูนเพื่อให้ **F1-Score** ดีที่สุดบนชุดทดสอบ
-""")
+pipe.fit(X_train, y_train)""", language="python")
+st.markdown("อธิบาย: ใช้ **RandomForestClassifier** เหมาะกับข้อมูลตัวเลขหลายมิติ (financial ratios) และช่วยลด **overfitting**. :contentReference[oaicite:6]{index=6}")
+
+st.subheader("🔹 Section 4: การปรับ Threshold")
+st.code(
+"""thr, best_f1 = tune_threshold(y_test, y_prob)
+print(f"Best threshold by F1: {thr:.3f}")""", language="python")
+st.markdown("อธิบาย: เลือก threshold ที่ให้ค่า **F1-Score** ดีที่สุด เพื่อให้แม่นทั้งฝั่ง Buy และ Not-Buy. :contentReference[oaicite:7]{index=7}")
+
+st.subheader("🔹 Section 5: Export & Result")
+st.code(
+"""dump(pipe, "buy_model_pipeline.pkl")
+out.to_csv("predictions_latest.csv")""", language="python")
+st.markdown("อธิบาย: บันทึกโมเดล `.pkl` และส่งออก “ผลคาดการณ์ล่าสุด” เป็น `predictions_latest.csv`. :contentReference[oaicite:8]{index=8}")
+
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-# ---------- Section 5 : Conclusion ----------
-st.header("Section 5: สรุปโครงการ")
+# ====== Section 3: ฟีเจอร์ที่ใช้ (10 ตัว) — ภาษาไทย ======
+st.header("Section 3: ฟีเจอร์ที่ใช้ (10 ตัว) — ภาษาไทย")
+st.write(f"ตลาดที่ใช้: `{suffix}`  •  ขอบเขตการพยากรณ์: {horizon} เดือนล่วงหน้า :contentReference[oaicite:9]{index=9}")
+
+cols = st.columns(2)
+for i, key in enumerate(feature_cols):
+    th_name, th_desc = FEATURE_THAI.get(key, (key, "-"))
+    with cols[i % 2]:
+        st.markdown(f"""
+<div class="card">
+  <div class="kicker">feature key</div>
+  <div class="badge">{key}</div>
+  <div class="block-title">{th_name}</div>
+  <div class="subtle">{th_desc}</div>
+</div>""", unsafe_allow_html=True)
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+# ====== Section 4: ผลลัพธ์ที่ได้ (Outputs) — เหมือน PDF ======
+st.header("Section 4: ผลลัพธ์ที่ได้ (Outputs)")
+st.markdown("ให้โชว์ **3 ตารางหลัก** (ตัวอย่างเหมือนในสไลด์) :contentReference[oaicite:10]{index=10}")
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    st.subheader("📘 1) dataset_financials_ttm.csv")
+    st.markdown("**ตัวอย่างข้อมูลเทรน**")
+    st.table(pd.DataFrame(
+        [{"ticker":"PTT","ROE":0.18,"ROA":0.09,"Debt/Equity":1.2,"Target":1}]
+    ))  # filecite: sample row
+with c2:
+    st.subheader("📗 2) feature_importance.csv")
+    st.markdown("**Top 5 ปัจจัยสำคัญที่สุด**")
+    st.table(pd.DataFrame(
+        [
+            {"Feature":"ROE_TTM","Importance":0.27},
+            {"Feature":"Debt_to_equity","Importance":0.21},
+            {"Feature":"OCF_to_CL","Importance":0.14},
+            {"Feature":"Net_margin_ttm","Importance":0.12},
+            {"Feature":"ROA_ttm","Importance":0.10},
+        ]
+    ))  # :contentReference[oaicite:11]{index=11}
+with c3:
+    st.subheader("📙 3) predictions_latest.csv")
+    st.markdown("**ตัวอย่าง Output**")
+    st.table(pd.DataFrame(
+        [
+            {"Ticker":"SAPPE","Prob_Buy":0.88,"Pred":"✅"},
+            {"Ticker":"AOT","Prob_Buy":0.72,"Pred":"✅"},
+            {"Ticker":"IRPC","Prob_Buy":0.35,"Pred":"❌"},
+        ]
+    ))  # :contentReference[oaicite:12]{index=12}
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+# ====== Section 5: การรันและ Deployment — เหมือน PDF ======
+st.header("Section 5: การรันและ Deployment")
+st.code("pip install -r requirements.txt", language="bash")   # :contentReference[oaicite:13]{index=13}
+st.code("streamlit run app.py", language="bash")              # :contentReference[oaicite:14]{index=14}
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+# ====== Section 6: สรุปการนำเสนอ (Conclusion Slide) — เหมือน PDF ======
+st.header("Section 6: สรุปการนำเสนอ (Conclusion Slide)")
 st.markdown("""
-- ✅ ดึงข้อมูลอัตโนมัติจาก **Yahoo Finance**
-- ✅ วิเคราะห์ปัจจัยพื้นฐาน **10 ตัว** (ภาษาไทยด้านบน)
-- ✅ ใช้ **Random Forest** จำแนกหุ้นน่าซื้อ
-- ✅ ส่งออกผลและ **Feature Importance** เพื่ออธิบายโมเดล
-- 🚀 **ต่อยอด**: ทำ Dashboard & Alert เมื่อความน่าซื้อเกินเกณฑ์
-""")
-st.success("พร้อมใช้นำเสนอทันที — โครงสร้างเรียบง่าย อ่านสบาย และสื่อสารชัดเจน ✨")
+- ✅ ดึงข้อมูลอัตโนมัติจาก **Yahoo Finance**  
+- ✅ วิเคราะห์ **ปัจจัยพื้นฐาน 10 ตัว**  
+- ✅ ใช้ **Random Forest** จำแนก “หุ้นน่าซื้อ”  
+- ✅ **Export** รายงานผลและความสำคัญของ Feature  
+""")  # :contentReference[oaicite:15]{index=15}
+
+st.success("หน้านี้ทำให้ตรงกับเอกสารพรีเซนต์แล้วครบทุกส่วน • พร้อมใช้นำเสนอทันที")
