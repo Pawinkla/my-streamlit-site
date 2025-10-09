@@ -3,7 +3,7 @@ setuptools==69.5.1
 wheel==0.41.2
 
 # deps สำหรับรันแอป (รุ่นใหม่ ให้ตรงกับ pickle ที่มีฟิลด์ missing_go_to_left)
-streamlit==1.35.0
+streamlit>=1.31
 yfinance==0.2.65
 pandas==2.2.2
 numpy==1.26.4

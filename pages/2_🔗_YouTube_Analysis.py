@@ -169,30 +169,45 @@ st.markdown(
 )
 st.image("assets/code6.jpg", use_column_width=True)
 st.image("assets/code7.jpg", use_column_width=True)
+st.image("assets/code10.jpg", use_column_width=True)
 
 section_divider()
-st.markdown("### การตั้งค่าฟอนต์และแก้ encoding (mojibake) สำหรับชื่อช่องภาษาไทย")
-placeholder(340, "โค้ด: ติดตั้ง/ตั้งค่าฟอนต์ + ฟังก์ชันแก้ mojibake (ภาพ)")
 
 st.markdown(
     """
-- ติดตั้งและตั้งค่าฟอนต์ภาษาไทย (เช่น Loma / Noto Sans Thai) เพื่อให้กราฟ/ข้อความไทยแสดงถูกต้อง  
-- เขียนฟังก์ชันช่วยแก้โมจิบาเกะ (mojibake) เช่น บางตัวแสดงเป็น `\\u0E00`–`\\u0E7F`  
-- แปลง encoding (เช่นจาก `'latin1'` → `'utf-8'`) เมื่อจำเป็น แล้วใช้ `.apply()` ช่วยปรับใน DataFrame  
+- ติดตั้งและตั้งค่าฟอนต์ภาษาไทย (Loma) เพื่อให้ matplotlib แสดงผลข้อความภาษาไทยได้ถูกต้อง  
+- ดึงข้อมูลตารางจากเว็บ โดยใช้ requests และ BeautifulSoup
+- แปลงข้อมูลในตารางเป็น DataFrame ด้วย pandas
+- ทำความสะอาดข้อมูลในคอลัมน์ likes ให้เป็นตัวเลขจริง
+- แก้ไขปัญหา encoding ของชื่อช่องที่อาจแสดงเป็นตัวอักษรเพี้ยน (mojibake) ด้วยฟังก์ชัน fix_double_encoded
+- รวมยอดไลก์ตามชื่อช่อง และกรองเฉพาะช่องที่ยอดไลก์เกิน 1 ล้าน
+- ตัดชื่อช่องให้สั้นลงสำหรับแสดงในกราฟ
+- วาดกราฟแท่งแสดงจำนวนไลก์รวมของ 5 ช่องที่มีไลก์สูงสุด โดยใช้ฟอนต์ไทยที่ตั้งไว้ เพื่อให้ชื่อช่องและข้อความแสดงผลเป็นภาษาไทยอย่างถูกต้อง
     """
 )
 
-placeholder(240, "รูปโค้ด: ฟังก์ชัน fix_mojibake + การใช้งานกับ DataFrame (ภาพ)")
-
-st.info(
-    "หากข้อมูลเป็นไทยถูกต้องอยู่แล้ว (ตรวจเจอช่วง `\\u0E00`–`\\u0E7F`) ไม่ต้องแก้เพิ่ม — "
-    "หากไม่ใช่จึงค่อยลองแปลง encoding เป็น `utf-8` และปรับชื่อคอลัมน์/ตัวอักษรให้เหมาะสม"
+st.image("assets/code11.jpg", use_column_width=True)
+st.markdown(
+    """
+- fix_mojibake เป็นฟังก์ชันแก้ข้อความที่ encoding ผิด (mojibake)
+- ใช้การเข้ารหัสใหม่จาก 'latin1' แล้วถอดรหัสเป็น 'utf-8' เพื่อคืนค่าข้อความที่ถูกต้อง 
+- ใช้ .apply() กับคอลัมน์ชื่อช่อง เพื่อแก้ปัญหาข้อความเพี้ยนในช่องชื่อของ DataFrame 
+    """
 )
+st.image("assets/code12.jpg", use_column_width=True)
 
+st.markdown(
+    """
+- ถ้าในข้อความนั้นมีตัวอักษรภาษาไทยอยู่แล้ว (\u0E00 ถึง \u0E7F) ถือว่าข้อความถูกต้องแล้ว ไม่ต้องแก้ไข
+- แต่ถ้าไม่มีตัวอักษรไทยเลย ให้ลองแปลง encoding จาก 'latin1' เป็น 'utf-8'
+- ถ้าหลังแปลง encoding แล้วยังเจอตัวอักษรไทยในข้อความ จะคืนค่าข้อความที่แก้ไขแล้ว (fixed)
+- ถ้าแปลงไม่ได้หรือไม่มีตัวอักษรไทยในข้อความหลังแปลง ก็คืนค่าเดิม
+    """
+)
 # ลิ้งก์ภายนอก (ตัวอย่าง)
 st.caption(
-    'ลิงก์ประกอบ (ตัวอย่าง): '
-    '<a href="https://colab.research.google.com/drive/1A_KrdsoAuIth24gA3igPFsUzqYtde33s?usp=sharing" target="_blank">'
+    'ลิงก์ประกอบ : '
+    '<a href="https://colab.research.google.com/drive/1A_KrdsoAuIth24gA3igFPsUzqYtde33s?usp=sharing" target="_blank">'
     'Google Colab</a>',
     unsafe_allow_html=True,
 )
