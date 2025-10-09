@@ -68,16 +68,14 @@ st.markdown("""
 with st.container():
     colA, colB = st.columns([1, 5], vertical_alignment="center")
     with colA:
-        st.image("assets/Pawin.jpg", use_column_width=False, caption=None, output_format="auto")
+        st.image("assets/Pawin.jpg", use_container_width=False, caption=None, output_format="auto")
     with colB:
         st.markdown("""
 <div class="hero">
   <h1>ภวินท์ กล้าทำ</h1>
   <div class="sub">Data Science • Machine Learning • Streamlit</div>
   <div style="margin-top:12px;">
-    <a class="link-btn" href="mailto:someone@example.com" target="_blank">✉️ ติดต่อ</a>
-    <a class="link-btn" href="https://github.com/" target="_blank">🐙 GitHub</a>
-    <a class="link-btn" href="https://www.linkedin.com/" target="_blank">🔗 LinkedIn</a>
+    <a class="link-btn" href="kl.pawin_st@tni.ac.th" target="_blank">✉️ ติดต่อ</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
