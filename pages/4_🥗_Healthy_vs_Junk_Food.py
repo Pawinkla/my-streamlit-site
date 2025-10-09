@@ -121,7 +121,7 @@ def estimate_calories_with_gpt(img: Image.Image, api_key: str) -> Optional[dict]
 
     try:
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
