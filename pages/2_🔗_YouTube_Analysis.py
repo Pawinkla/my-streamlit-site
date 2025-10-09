@@ -141,7 +141,7 @@ st.markdown(
 )
 
 # กราฟ matplotlib (ภาพ)
-st.image("assets/code4.jpg", use_column_width=True))
+st.image("assets/code4.jpg", use_column_width=True)
 
 st.markdown(
     """
