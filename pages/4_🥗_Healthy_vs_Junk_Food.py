@@ -11,7 +11,9 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 # ========== CONFIG ==========
-OPENAI_API_KEY = ""   # <<< วางคีย์ตรงนี้
+import streamlit as st
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+
 GPT_MODEL = "gpt-4o-mini"                            # โมเดลวิชั่น (รองรับภาพ) ของ OpenAI
 # ============================
 
