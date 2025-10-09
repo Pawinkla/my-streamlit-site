@@ -124,7 +124,7 @@ st.markdown(
 )
 
 # สคริปต์วนลูปอ่านแถว/คอลัมน์
-placeholder(280, "โค้ดวนลูปอ่านแถว/คอลัมน์ (ภาพ)")
+st.image("assets/code3.jpg", use_column_width=True)
 
 st.markdown(
     """
@@ -141,7 +141,7 @@ st.markdown(
 )
 
 # กราฟ matplotlib (ภาพ)
-placeholder(300, "กราฟ matplotlib (ภาพ)")
+st.image("assets/code4.jpg", use_column_width=True))
 
 st.markdown(
     """
