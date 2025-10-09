@@ -75,9 +75,7 @@ st.markdown(
 )
 
 # ภาพตารางอันดับ (แทนด้วย placeholder)
-st.image("../assets/top_youtube_thailand.jpg", use_column_width=True)
-
-
+st.image("assets/top_youtube_thailand.jpg", use_column_width=True)
 
 section_divider()
 
