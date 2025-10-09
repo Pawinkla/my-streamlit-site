@@ -92,13 +92,13 @@ st.markdown(
 
 # โค้ดกล่องภาพตาราง (ย่อ) 
 st.caption("รูปตัวอย่างตารางอันดับ (ย่อ)")
-placeholder(260, "ตารางอันดับ (ภาพตัวอย่าง)")
+st.image("assets/code1.jpg", use_column_width=True)
 
 section_divider()
 
 # ---------- บล็อกโค้ด (ภาพ/โค้ดตัวอย่าง) ----------
 st.markdown("#### ตัวอย่างโค้ด (import / requests / bs4 / pandas / matplotlib / seaborn)")
-placeholder(280, "โค้ดตัวอย่าง (ภาพ)")
+st.image("assets/code2.jpg", use_column_width=True)
 
 # สรุป bullet list
 st.markdown(
